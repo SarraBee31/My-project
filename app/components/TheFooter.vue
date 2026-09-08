@@ -1,13 +1,5 @@
 <template>
-    <footer class="border py-4 text-center dark:border-gray-500">
-        The Footer
-    </footer>
+  <footer class="border-t border-stone-200 py-4 text-center text-sm text-stone-500 dark:border-stone-700 dark:text-stone-400">
+    Capsule Wardrobe — coming soon
+  </footer>
 </template>
-
-<script setup>
-
-</script>
-
-<style lang="postcss" scoped>
-
-</style>
