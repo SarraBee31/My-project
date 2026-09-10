@@ -7,6 +7,7 @@
       :type="type"
       :autocomplete="autocomplete"
       :placeholder="placeholder"
+      :disabled="disabled"
       :aria-invalid="Boolean(error)"
       :aria-describedby="error ? `${id}-error` : undefined"
       :class="inputClass"
@@ -30,6 +31,7 @@ const props = defineProps({
   type: { type: String, default: 'text' },
   autocomplete: { type: String, default: 'off' },
   placeholder: { type: String, default: '' },
+  disabled: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:modelValue', 'blur'])
@@ -39,6 +41,8 @@ const inputClass = computed(() => cn(
   props.error
     ? 'border-destructive focus-visible:ring-destructive/40'
     : 'border-input focus-visible:ring-ring',
+  props.disabled ? 'cursor-not-allowed opacity-60' : '',
+
 ))
 
 function onInput(event) {

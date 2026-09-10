@@ -2,7 +2,7 @@
   <div class="flex min-h-[calc(100vh-8.3rem)] flex-col py-8">
     <div class="mx-auto w-full max-w-3xl">
       <p class="text-sm text-muted-foreground">
-        {{ userStore.firstName }}, choisis le style de ta capsule.
+        {{ userStore.firstName || 'Salut' }}, choisis le style de ta capsule.
       </p>
       <h1 class="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
         Choisis ton aesthetic
@@ -27,8 +27,8 @@
         </button>
       </div>
 
-      <Button class="mt-6 h-11 w-full rounded-full sm:w-auto sm:px-8" @click="confirm">
-        Valider mon aesthetic
+      <Button class="mt-6 h-11 w-full rounded-full sm:w-auto sm:px-8" :disabled="pending" @click="confirm">
+        {{ pending ? 'Enregistrement…' : 'Valider mon aesthetic' }}
       </Button>
     </div>
   </div>
@@ -37,24 +37,38 @@
 <script setup>
 import { Button } from '@/components/ui/button'
 
+definePageMeta({
+  middleware: 'auth',
+})
+
 useSeoMeta({ title: 'Choisis ton aesthetic' })
 
 const userStore = useUserStore()
-
-if (!userStore.isLoggedIn) {
-  await navigateTo('/signup')
-}
-
 const selectedId = ref(userStore.aestheticId)
 const selectionError = ref(null)
+const pending = ref(false)
 
-function confirm() {
+watch(() => userStore.aestheticId, (id) => {
+  if (id && !selectedId.value) selectedId.value = id
+})
+
+async function confirm() {
   if (!selectedId.value) {
     selectionError.value = 'Choisis un aesthetic pour continuer.'
     return
   }
 
-  userStore.setAesthetic(selectedId.value)
-  navigateTo('/')
+  pending.value = true
+  selectionError.value = null
+  try {
+    await userStore.setAesthetic(selectedId.value)
+    await navigateTo('/pieces')
+  }
+  catch (error) {
+    selectionError.value = authErrorMessage(error)
+  }
+  finally {
+    pending.value = false
+  }
 }
 </script>

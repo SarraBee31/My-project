@@ -1,80 +1,75 @@
-Nuxt 4 Shadcn-vue Starter Template
-=====================================
-![image](https://github.com/user-attachments/assets/64d24990-0d97-46dd-9e88-406ac591db18)
+# Dansee — Capsule Wardrobe
 
-## Features
-* Dark Mode
-* Image optimization with @nuxt/image
-* Integration with Tailwind CSS 4
-* State management with Pinia
-* Utilities and composables from VueUse
-* Icon components from Radix Icons
+**Projet :** Dansee (assistant capsule wardrobe)  
+**Groupe :** Dansee  
+**Site :** https://nuxt-shadcn-starter-template.vercel.app  
+**Dépôt :** https://github.com/SarraBee31/My-project
 
-## Installed Packages
+Application Nuxt (Vue) : inscription / connexion Supabase, choix d’un aesthetic, puis CRUD des photos de vêtements.
 
--   `@nuxt/image`: ^1.11.0
--   `@nuxtjs/color-mode`: ^3.5.2
--   `@pinia/nuxt`: ^0.11.2
--   `@radix-icons/vue`: ^1.0.0
--   `@tailwindcss/vite`: ^4.1.12
--   `@vueuse/core`: ^13.8.0
--   `@vueuse/nuxt`: ^13.8.0
--   `class-variance-authority`: ^0.7.1
--   `clsx`: ^2.1.1
--   `lucide-vue-next`: ^0.542.0
--   `nuxt`: ^4.0.3
--   `pinia`: ^3.0.3
--   `radix-vue`: ^1.9.17
--   `reka-ui`: ^2.5.0
--   `shadcn-nuxt`: ^2.2.0
--   `tailwind-merge`: ^3.3.1
--   `tailwindcss`: ^4.1.12
--   `tailwindcss-animate`: ^1.0.7
--   `tw-animate-css`: ^1.3.7
--   `typescript`: ^5.9.2 (dev dependency)
--   `vue`: latest
--   `vue-router`: latest
--   `@tailwindcss/typography`: ^0.5.16 (dev dependency)
+## Parcours
 
-## Project Structure
+1. Accueil `/`
+2. Inscription `/signup` (email + mot de passe, confirmation mail)
+3. Connexion `/login` et déconnexion
+4. Aesthetic `/aesthetic` (enregistré sur `profile.aesthetic_id`)
+5. Pièces `/pieces` : ajouter, lister, renommer, supprimer (table `piece` + Storage)
 
-* `components`: Reusable Vue components
-* `layouts`: Page layouts
-* `pages`: Page components
-* `plugins`: Nuxt plugins
-* `store`: Pinia store
+## Prérequis
 
-## Getting Started
+- Node.js 20+
+- Projet Supabase (URL + clé publishable)
 
-To get started with this project, run the following commands:
+## Installation
 
 ```bash
 npm install
+cp .env.example .env
+```
+
+Renseigner `.env` :
+
+```
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_KEY=sb_publishable_...
+NUXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NUXT_PUBLIC_SUPABASE_KEY=sb_publishable_...
+```
+
+Dans le SQL Editor Supabase, exécuter `supabase/schema.sql` (tables, RLS, trigger, bucket).
+
+```bash
 npm run dev
 ```
 
-This will start the development server and you can access the application at `http://localhost:3000`.
+Ouvre http://localhost:3000.
 
-## Building for Production
+## Scripts
 
-To build the application for production, run the following command:
+| Commande | Rôle |
+|---|---|
+| `npm run dev` | Serveur de développement |
+| `npm run build` | Build production |
+| `npm run preview` | Prévisualiser le build |
 
-```bash
-npm run build
+## Structure
+
+```
+app/
+  pages/          Accueil, signup, login, confirm, aesthetic, pieces
+  stores/         Pinia (user, piece)
+  middleware/     auth
+  types/          database.types.ts
+  utils/          validation, erreurs, id Supabase
+docs/database.md  Schéma, CRUD, RLS
+supabase/schema.sql
 ```
 
-This will generate the production-ready code in the `dist` directory.
+## Livrables demandés
 
-## Generating Static Site
-
-To generate a static site, run the following command:
-
-```bash
-npm run generate
-```
-
-This will generate a static site in the `dist` directory.
-
-## License
-
-This project is licensed under the MIT License.
+- URL du site : https://nuxt-shadcn-starter-template.vercel.app
+- URL GitHub : https://github.com/SarraBee31/My-project
+- Nom du projet et groupe : **Dansee**
+- README : ce fichier
+- `app/types/database.types.ts`
+- `docs/database.md`

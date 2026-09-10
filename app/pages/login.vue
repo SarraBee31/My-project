@@ -3,7 +3,7 @@
     <div class="w-full max-w-md rounded-2xl border border-stone-200 bg-background p-6 shadow-sm sm:p-8 dark:border-stone-700">
       <h1 class="text-2xl font-semibold tracking-tight">Connexion</h1>
       <p class="mt-2 text-sm text-muted-foreground">
-        Entre ton email et ton mot de passe. Un message s’affiche si un champ est vide ou invalide.
+        Connecte-toi avec l’email et le mot de passe de ton compte.
       </p>
 
       <form class="mt-6 space-y-4" novalidate @submit.prevent="onSubmit">
@@ -15,6 +15,7 @@
           autocomplete="email"
           placeholder="lea@mail.fr"
           :error="errors.email"
+          :disabled="pending"
           @blur="touched.email = true"
         />
         <AuthField
@@ -25,14 +26,30 @@
           autocomplete="current-password"
           placeholder="Ton mot de passe"
           :error="errors.password"
+          :disabled="pending"
           @blur="touched.password = true"
         />
 
         <p v-if="formError" class="text-sm text-destructive" role="alert">
           {{ formError }}
         </p>
+        <p v-if="infoMessage" class="text-sm text-muted-foreground" role="status">
+          {{ infoMessage }}
+        </p>
 
-        <Button type="submit" class="h-11 w-full rounded-full">Se connecter</Button>
+        <Button type="submit" class="h-11 w-full rounded-full" :disabled="pending">
+          {{ pending ? 'Connexion…' : 'Se connecter' }}
+        </Button>
+        <Button
+          v-if="needsConfirmation"
+          type="button"
+          variant="outline"
+          class="h-11 w-full rounded-full"
+          :disabled="pending"
+          @click="resendConfirmation"
+        >
+          Renvoyer l’email de confirmation
+        </Button>
       </form>
 
       <p class="mt-6 text-center text-sm text-muted-foreground">
@@ -50,12 +67,22 @@ import { Button } from '@/components/ui/button'
 
 useSeoMeta({ title: 'Login — Capsule Wardrobe' })
 
+const supabase = useSupabaseClient()
+const sessionUser = useSupabaseUser()
 const userStore = useUserStore()
+const config = useRuntimeConfig()
+
+if (sessionUser.value) {
+  await navigateTo(userStore.aestheticId ? '/pieces' : '/aesthetic')
+}
 
 const email = ref('')
 const password = ref('')
 const submitted = ref(false)
+const pending = ref(false)
 const formError = ref(null)
+const infoMessage = ref(null)
+const needsConfirmation = ref(false)
 const touched = reactive({
   email: false,
   password: false,
@@ -69,17 +96,51 @@ const errors = computed(() => {
   }
 })
 
-function onSubmit() {
+async function onSubmit() {
   submitted.value = true
   formError.value = null
+  infoMessage.value = null
+  needsConfirmation.value = false
   if (errors.value.email || errors.value.password) return
 
-  const loginError = userStore.login(email.value, password.value)
-  if (loginError) {
-    formError.value = loginError
-    return
-  }
+  pending.value = true
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.value.trim().toLowerCase(),
+      password: password.value,
+    })
+    if (error) throw error
 
-  navigateTo(userStore.aestheticId ? '/' : '/aesthetic')
+    await userStore.syncFromSupabase(data.user)
+    await navigateTo(userStore.aestheticId ? '/pieces' : '/aesthetic')
+  }
+  catch (error) {
+    const message = authErrorMessage(error)
+    formError.value = message
+    needsConfirmation.value = message.toLowerCase().includes('confirme')
+  }
+  finally {
+    pending.value = false
+  }
+}
+
+async function resendConfirmation() {
+  formError.value = null
+  pending.value = true
+  try {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.value.trim().toLowerCase(),
+      options: { emailRedirectTo: config.public.confirmUrl },
+    })
+    if (error) throw error
+    infoMessage.value = `Un email de confirmation a été renvoyé à ${email.value.trim().toLowerCase()}. Le lien ouvre le site Vercel.`
+  }
+  catch (error) {
+    formError.value = authErrorMessage(error)
+  }
+  finally {
+    pending.value = false
+  }
 }
 </script>

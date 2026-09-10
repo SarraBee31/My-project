@@ -1,0 +1,1 @@
+-- See supabase/schema.sql (profile RLS + piece table + storage).

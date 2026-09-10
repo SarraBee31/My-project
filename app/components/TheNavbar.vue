@@ -5,15 +5,28 @@
     </NuxtLink>
 
     <div class="flex items-center gap-2">
-      <span v-if="userStore.firstName" class="hidden text-sm text-muted-foreground sm:inline">
-        {{ userStore.firstName }}
-      </span>
-      <Button as-child variant="ghost" class="h-10 rounded-full px-4">
-        <NuxtLink to="/login">Login</NuxtLink>
-      </Button>
-      <Button as-child class="h-10 rounded-full px-4">
-        <NuxtLink to="/signup">Sign up</NuxtLink>
-      </Button>
+      <ClientOnly>
+        <span v-if="userStore.firstName" class="hidden text-sm text-muted-foreground sm:inline">
+          {{ userStore.firstName }}
+        </span>
+        <span v-if="logoutError" class="text-xs text-destructive">{{ logoutError }}</span>
+        <template v-if="userStore.isLoggedIn">
+          <Button as-child variant="ghost" class="h-10 rounded-full px-4">
+            <NuxtLink to="/pieces">Pièces</NuxtLink>
+          </Button>
+          <Button variant="outline" class="h-10 rounded-full px-4" :disabled="pendingLogout" @click="logout">
+            {{ pendingLogout ? 'Déconnexion…' : 'Déconnexion' }}
+          </Button>
+        </template>
+        <template v-else>
+          <Button as-child variant="ghost" class="h-10 rounded-full px-4">
+            <NuxtLink to="/login">Login</NuxtLink>
+          </Button>
+          <Button as-child class="h-10 rounded-full px-4">
+            <NuxtLink to="/signup">Sign up</NuxtLink>
+          </Button>
+        </template>
+      </ClientOnly>
       <client-only>
         <button
           type="button"
@@ -39,4 +52,21 @@ import { Button } from '@/components/ui/button'
 const userStore = useUserStore()
 const isDark = useDark()
 const toggleDark = useToggle(isDark)
+const pendingLogout = ref(false)
+const logoutError = ref(null)
+
+async function logout() {
+  pendingLogout.value = true
+  logoutError.value = null
+  try {
+    await userStore.logout()
+    await navigateTo('/')
+  }
+  catch (error) {
+    logoutError.value = authErrorMessage(error)
+  }
+  finally {
+    pendingLogout.value = false
+  }
+}
 </script>

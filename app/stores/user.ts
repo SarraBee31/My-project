@@ -15,57 +15,168 @@ export const aestheticOptions: { id: AestheticId, label: string, description: st
   { id: 'vintage', label: 'Vintage', description: 'Pièces trouvées, textures, caractère.' },
 ]
 
-export const useUserStore = defineStore('user', {
-  state: () => ({
+type ProfileRow = {
+  id: string
+  username: string | null
+  aesthetic_id: AestheticId | null
+}
+
+export function usernameFromNames(firstName: string, lastName: string) {
+  return `${firstName.trim()} ${lastName.trim()}`.trim()
+}
+
+function namesFromUsername(username: string | null | undefined) {
+  const trimmed = username?.trim() ?? ''
+  if (!trimmed) return { firstName: '', lastName: '' }
+  const [firstName, ...rest] = trimmed.split(/\s+/)
+  return {
+    firstName,
+    lastName: rest.join(' '),
+  }
+}
+
+function emptyProfile() {
+  return {
     lastName: '',
     firstName: '',
     email: '',
     phone: '',
     postalAddress: '',
-    password: '',
     aestheticId: null as AestheticId | null,
     isRegistered: false,
     isLoggedIn: false,
-  }),
+  }
+}
+
+export const useUserStore = defineStore('user', {
+  state: () => emptyProfile(),
   getters: {
     aestheticLabel: (state) => {
       return aestheticOptions.find(option => option.id === state.aestheticId)?.label ?? null
     },
   },
   actions: {
-    register(payload: {
-      lastName: string
-      firstName: string
-      email: string
-      phone: string
-      postalAddress: string
-      password: string
-    }) {
-      this.lastName = payload.lastName.trim()
-      this.firstName = payload.firstName.trim()
-      this.email = payload.email.trim().toLowerCase()
-      this.phone = payload.phone.trim()
-      this.postalAddress = payload.postalAddress.trim()
-      this.password = payload.password
+    reset() {
+      Object.assign(this, emptyProfile())
+    },
+    applyProfile(row: Partial<ProfileRow> | null, email?: string | null) {
+      const names = namesFromUsername(row?.username)
+      this.firstName = names.firstName || this.firstName
+      this.lastName = names.lastName || this.lastName
+      this.aestheticId = row?.aesthetic_id ?? this.aestheticId
+      if (email) this.email = email
       this.isRegistered = true
       this.isLoggedIn = true
     },
-    login(email: string, password: string) {
-      if (!this.isRegistered) {
-        return 'Aucun compte n’a encore été créé. Inscris-toi d’abord.'
+    async syncFromSupabase(authUser?: { id?: string, sub?: string, email?: string, user_metadata?: Record<string, string> } | null) {
+      const client = useSupabaseClient()
+      const user = await resolveAuthUser(authUser)
+      const userId = supabaseUserId(user)
+
+      if (!userId) {
+        this.reset()
+        return
       }
-      if (this.email !== email.trim().toLowerCase()) {
-        return 'Aucun compte ne correspond à cet email.'
-      }
-      if (this.password !== password) {
-        return 'Le mot de passe est incorrect.'
-      }
+
+      this.email = user?.email ?? ''
       this.isLoggedIn = true
-      return null
+      this.isRegistered = true
+
+      const metadata = user?.user_metadata ?? {}
+      const fallbackUsername = usernameFromNames(
+        metadata.first_name ?? metadata.firstName ?? this.firstName,
+        metadata.last_name ?? metadata.lastName ?? this.lastName,
+      ) || metadata.username || (user?.email ?? '')
+
+      const { data, error } = await client
+        .from('profile')
+        .select('id, username, aesthetic_id')
+        .eq('id', userId)
+        .maybeSingle()
+
+      if (error) throw error
+
+      if (!data) {
+        const { error: upsertError } = await client.from('profile').upsert({
+          id: userId,
+          username: fallbackUsername,
+        })
+        if (upsertError) throw upsertError
+
+        const { data: created, error: reloadError } = await client
+          .from('profile')
+          .select('id, username, aesthetic_id')
+          .eq('id', userId)
+          .maybeSingle()
+        if (reloadError) throw reloadError
+        this.applyProfile(created, user?.email)
+      }
+      else {
+        this.applyProfile(data, user?.email)
+      }
+
+      this.phone = metadata.phone ?? this.phone
+      this.postalAddress = metadata.postal_address ?? metadata.postalAddress ?? this.postalAddress
+      if (!this.firstName) {
+        this.firstName = metadata.first_name ?? metadata.firstName ?? ''
+        this.lastName = metadata.last_name ?? metadata.lastName ?? ''
+      }
     },
-    setAesthetic(id: AestheticId) {
+    async saveProfile(payload: {
+      lastName: string
+      firstName: string
+      phone: string
+      postalAddress: string
+    }, authUser?: { id?: string, sub?: string, email?: string } | null) {
+      const client = useSupabaseClient()
+      const user = await resolveAuthUser(authUser)
+      const userId = supabaseUserId(user)
+      if (!userId) throw new Error('Tu dois être connectée pour enregistrer le profil.')
+
+      const row = {
+        id: userId,
+        username: usernameFromNames(payload.firstName, payload.lastName),
+      }
+
+      const { error } = await client.from('profile').upsert(row)
+      if (error) throw error
+      this.phone = payload.phone.trim()
+      this.postalAddress = payload.postalAddress.trim()
+      this.applyProfile(row, user?.email)
+    },
+    async setAesthetic(id: AestheticId) {
+      const client = useSupabaseClient()
+      const user = await resolveAuthUser()
+      const userId = supabaseUserId(user)
+      if (!userId) throw new Error('Tu dois être connectée pour enregistrer ton aesthetic.')
+
+      const { data, error } = await client
+        .from('profile')
+        .update({ aesthetic_id: id })
+        .eq('id', userId)
+        .select('id')
+        .maybeSingle()
+      if (error) throw error
+
+      if (!data) {
+        await this.syncFromSupabase()
+        const { error: retryError } = await client
+          .from('profile')
+          .update({ aesthetic_id: id })
+          .eq('id', userId)
+        if (retryError) throw retryError
+      }
+
       this.aestheticId = id
     },
+    async logout() {
+      const client = useSupabaseClient()
+      const { error } = await client.auth.signOut()
+      this.reset()
+      if (error) throw error
+    },
   },
-  persist: true,
+  persist: {
+    pick: ['lastName', 'firstName', 'email', 'phone', 'postalAddress', 'aestheticId'],
+  },
 })

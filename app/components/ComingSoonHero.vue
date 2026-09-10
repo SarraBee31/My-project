@@ -26,12 +26,22 @@
     </div>
 
     <div class="flex flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
-      <Button as-child class="h-11 w-full rounded-full sm:w-auto">
-        <NuxtLink to="/signup">Créer un compte</NuxtLink>
-      </Button>
-      <Button as-child variant="outline" class="h-11 w-full rounded-full sm:w-auto">
-        <NuxtLink to="/login">Se connecter</NuxtLink>
-      </Button>
+      <template v-if="userStore.isLoggedIn">
+        <Button as-child class="h-11 w-full rounded-full sm:w-auto">
+          <NuxtLink to="/pieces">Upload your pieces</NuxtLink>
+        </Button>
+        <Button as-child variant="outline" class="h-11 w-full rounded-full sm:w-auto">
+          <NuxtLink to="/aesthetic">Mon aesthetic</NuxtLink>
+        </Button>
+      </template>
+      <template v-else>
+        <Button as-child class="h-11 w-full rounded-full sm:w-auto">
+          <NuxtLink to="/signup">Créer un compte</NuxtLink>
+        </Button>
+        <Button as-child variant="outline" class="h-11 w-full rounded-full sm:w-auto">
+          <NuxtLink to="/login">Se connecter</NuxtLink>
+        </Button>
+      </template>
     </div>
   </section>
 </template>
