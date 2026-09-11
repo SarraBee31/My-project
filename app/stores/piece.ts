@@ -1,12 +1,12 @@
+import { defineStore } from 'pinia'
 import type { Database } from '~/types/database.types'
 
-type PieceRow = Database['public']['Tables']['piece']['Row']
+type ItemRow = Database['public']['Tables']['items']['Row']
+type ItemCategory = Database['public']['Enums']['item_category']
 
-export type PieceItem = PieceRow & {
-  imageUrl: string
-}
+export type PieceItem = ItemRow
 
-const BUCKET = 'pieces'
+const BUCKET = 'photos'
 
 function extFromFile(file: File) {
   const fromName = file.name.split('.').pop()?.toLowerCase()
@@ -18,6 +18,26 @@ function extFromFile(file: File) {
   return 'jpg'
 }
 
+function storagePathFromPublicUrl(photoUrl: string) {
+  const marker = `/object/public/${BUCKET}/`
+  const index = photoUrl.indexOf(marker)
+  if (index === -1) return null
+  return decodeURIComponent(photoUrl.slice(index + marker.length))
+}
+
+function rethrowItemError(error: { code?: string, message?: string, details?: string, hint?: string }) {
+  const code = error.code ?? ''
+  const message = error.message ?? String(error)
+  const blob = [code, message, error.details, error.hint].filter(Boolean).join(' ').toLowerCase()
+  if (code === '23503' && blob.includes('outfit_items')) {
+    throw new Error('Cette pièce est utilisée dans un outfit')
+  }
+  if (code === '23503' && blob.includes('items_user_id_fkey')) {
+    throw new Error('Profil introuvable — reconnecte-toi.')
+  }
+  throw new Error(`Erreur ${code || '?'} : ${message}`)
+}
+
 export const usePieceStore = defineStore('piece', {
   state: () => ({
     items: [] as PieceItem[],
@@ -26,10 +46,6 @@ export const usePieceStore = defineStore('piece', {
     error: null as string | null,
   }),
   actions: {
-    imageUrl(storagePath: string) {
-      const client = useSupabaseClient<Database>()
-      return client.storage.from(BUCKET).getPublicUrl(storagePath).data.publicUrl
-    },
     async fetchAll() {
       const client = useSupabaseClient<Database>()
       const user = await resolveAuthUser()
@@ -43,15 +59,12 @@ export const usePieceStore = defineStore('piece', {
       this.error = null
       try {
         const { data, error } = await client
-          .from('piece')
-          .select('id, user_id, name, storage_path, created_at, updated_at')
+          .from('items')
+          .select('item_id, user_id, photo_url, category, created_at')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
         if (error) throw error
-        this.items = (data ?? []).map(row => ({
-          ...row,
-          imageUrl: this.imageUrl(row.storage_path),
-        }))
+        this.items = data ?? []
       }
       catch (error) {
         this.error = authErrorMessage(error)
@@ -61,64 +74,52 @@ export const usePieceStore = defineStore('piece', {
         this.loading = false
       }
     },
-    async createFromFile(file: File) {
+    async createFromFile(file: File, category: ItemCategory) {
       const client = useSupabaseClient<Database>()
       const user = await resolveAuthUser()
       const userId = supabaseUserId(user)
       if (!userId) throw new Error('Tu dois être connectée pour ajouter une pièce.')
 
-      const path = `${userId}/${crypto.randomUUID()}.${extFromFile(file)}`
+      const filename = `${crypto.randomUUID()}.${extFromFile(file)}`
+      const path = `${userId}/${filename}`
       const { error: uploadError } = await client.storage.from(BUCKET).upload(path, file, {
         upsert: false,
         contentType: file.type,
       })
       if (uploadError) throw uploadError
 
+      const photoUrl = client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+
       const { data, error } = await client
-        .from('piece')
+        .from('items')
         .insert({
           user_id: userId,
-          name: file.name.replace(/\.[^.]+$/, '') || 'Pièce',
-          storage_path: path,
+          photo_url: photoUrl,
+          category,
         })
-        .select('id, user_id, name, storage_path, created_at, updated_at')
+        .select('item_id, user_id, photo_url, category, created_at')
         .single()
-      if (error) throw error
+      if (error) rethrowItemError(error)
 
-      this.items.unshift({
-        ...data,
-        imageUrl: this.imageUrl(data.storage_path),
-      })
+      this.items.unshift(data)
     },
-    async rename(id: string, name: string) {
+    async remove(itemId: string) {
       const client = useSupabaseClient<Database>()
-      const trimmed = name.trim()
-      if (!trimmed) throw new Error('Le nom de la pièce est obligatoire.')
-
-      const { data, error } = await client
-        .from('piece')
-        .update({ name: trimmed, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select('id, user_id, name, storage_path, created_at, updated_at')
-        .single()
-      if (error) throw error
-
-      this.items = this.items.map(item => item.id === id
-        ? { ...data, imageUrl: this.imageUrl(data.storage_path) }
-        : item)
-    },
-    async remove(id: string) {
-      const client = useSupabaseClient<Database>()
-      const item = this.items.find(piece => piece.id === id)
+      const item = this.items.find(row => row.item_id === itemId)
       if (!item) return
 
-      const { error: storageError } = await client.storage.from(BUCKET).remove([item.storage_path])
-      if (storageError) throw storageError
+      const { error } = await client.from('items').delete().eq('item_id', itemId)
+      if (error) rethrowItemError(error)
 
-      const { error } = await client.from('piece').delete().eq('id', id)
-      if (error) throw error
+      this.items = this.items.filter(row => row.item_id !== itemId)
 
-      this.items = this.items.filter(piece => piece.id !== id)
+      const storagePath = storagePathFromPublicUrl(item.photo_url)
+      if (storagePath) {
+        const { error: storageError } = await client.storage.from(BUCKET).remove([storagePath])
+        if (storageError) {
+          throw new Error("Pièce supprimée, mais le fichier n'a pas pu être nettoyé")
+        }
+      }
     },
   },
 })

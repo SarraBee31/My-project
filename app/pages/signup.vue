@@ -3,7 +3,7 @@
     <div class="w-full max-w-md rounded-2xl border border-stone-200 bg-background p-6 shadow-sm sm:p-8 dark:border-stone-700">
       <h1 class="text-2xl font-semibold tracking-tight">Créer un compte</h1>
       <p class="mt-2 text-sm text-muted-foreground">
-        Inscription par email et mot de passe. Un email de confirmation sera envoyé.
+        Inscription par email et mot de passe.
       </p>
 
       <p v-if="infoMessage" class="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm dark:border-stone-700 dark:bg-stone-900" role="status">
@@ -102,12 +102,13 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+import type { Database } from '~/types/database.types'
 import { Button } from '@/components/ui/button'
 
 useSeoMeta({ title: 'Sign up — Capsule Wardrobe' })
 
-const supabase = useSupabaseClient()
+const supabase = useSupabaseClient<Database>()
 const sessionUser = useSupabaseUser()
 const userStore = useUserStore()
 const config = useRuntimeConfig()
@@ -179,12 +180,7 @@ async function onSubmit() {
       return
     }
 
-    await userStore.saveProfile({
-      lastName: lastName.value,
-      firstName: firstName.value,
-      phone: phone.value,
-      postalAddress: postalAddress.value,
-    }, data.user)
+    await userStore.syncFromSupabase(data.user)
     await navigateTo('/aesthetic')
   }
   catch (error) {

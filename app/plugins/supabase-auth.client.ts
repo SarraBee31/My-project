@@ -9,6 +9,7 @@ export default defineNuxtPlugin(() => {
 
     try {
       await userStore.syncFromSupabase()
+      userStore.profileError = null
       profile.value = {
         id: userId,
         username: usernameFromNames(userStore.firstName, userStore.lastName) || null,
@@ -17,6 +18,7 @@ export default defineNuxtPlugin(() => {
     }
     catch (error) {
       console.error(error)
+      userStore.profileError = authErrorMessage(error)
     }
   }, { immediate: true })
 })

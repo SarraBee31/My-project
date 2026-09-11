@@ -1,3 +1,5 @@
+import type { Database } from '~/types/database.types'
+
 export type AestheticId =
   | 'quiet-luxury'
   | 'parisian'
@@ -15,11 +17,7 @@ export const aestheticOptions: { id: AestheticId, label: string, description: st
   { id: 'vintage', label: 'Vintage', description: 'Pièces trouvées, textures, caractère.' },
 ]
 
-type ProfileRow = {
-  id: string
-  username: string | null
-  aesthetic_id: AestheticId | null
-}
+type ProfileRow = Database['public']['Tables']['profiles']['Row']
 
 export function usernameFromNames(firstName: string, lastName: string) {
   return `${firstName.trim()} ${lastName.trim()}`.trim()
@@ -45,6 +43,7 @@ function emptyProfile() {
     aestheticId: null as AestheticId | null,
     isRegistered: false,
     isLoggedIn: false,
+    profileError: null as string | null,
   }
 }
 
@@ -63,13 +62,13 @@ export const useUserStore = defineStore('user', {
       const names = namesFromUsername(row?.username)
       this.firstName = names.firstName || this.firstName
       this.lastName = names.lastName || this.lastName
-      this.aestheticId = row?.aesthetic_id ?? this.aestheticId
+      if (row?.aesthetic_id) this.aestheticId = row.aesthetic_id as AestheticId
       if (email) this.email = email
       this.isRegistered = true
       this.isLoggedIn = true
     },
     async syncFromSupabase(authUser?: { id?: string, sub?: string, email?: string, user_metadata?: Record<string, string> } | null) {
-      const client = useSupabaseClient()
+      const client = useSupabaseClient<Database>()
       const user = await resolveAuthUser(authUser)
       const userId = supabaseUserId(user)
 
@@ -83,38 +82,31 @@ export const useUserStore = defineStore('user', {
       this.isRegistered = true
 
       const metadata = user?.user_metadata ?? {}
-      const fallbackUsername = usernameFromNames(
-        metadata.first_name ?? metadata.firstName ?? this.firstName,
-        metadata.last_name ?? metadata.lastName ?? this.lastName,
-      ) || metadata.username || (user?.email ?? '')
 
-      const { data, error } = await client
-        .from('profile')
-        .select('id, username, aesthetic_id')
-        .eq('id', userId)
-        .maybeSingle()
-
-      if (error) throw error
-
-      if (!data) {
-        const { error: upsertError } = await client.from('profile').upsert({
-          id: userId,
-          username: fallbackUsername,
-        })
-        if (upsertError) throw upsertError
-
-        const { data: created, error: reloadError } = await client
-          .from('profile')
+      async function loadProfile() {
+        return client
+          .from('profiles')
           .select('id, username, aesthetic_id')
           .eq('id', userId)
           .maybeSingle()
-        if (reloadError) throw reloadError
-        this.applyProfile(created, user?.email)
-      }
-      else {
-        this.applyProfile(data, user?.email)
       }
 
+      let { data, error } = await loadProfile()
+      if (error) throw error
+
+      if (!data) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        const retry = await loadProfile()
+        if (retry.error) throw retry.error
+        data = retry.data
+      }
+
+      if (!data) {
+        throw new Error('Profil introuvable. Réessaie dans un instant.')
+      }
+
+      this.profileError = null
+      this.applyProfile(data, user?.email)
       this.phone = metadata.phone ?? this.phone
       this.postalAddress = metadata.postal_address ?? metadata.postalAddress ?? this.postalAddress
       if (!this.firstName) {
@@ -122,36 +114,14 @@ export const useUserStore = defineStore('user', {
         this.lastName = metadata.last_name ?? metadata.lastName ?? ''
       }
     },
-    async saveProfile(payload: {
-      lastName: string
-      firstName: string
-      phone: string
-      postalAddress: string
-    }, authUser?: { id?: string, sub?: string, email?: string } | null) {
-      const client = useSupabaseClient()
-      const user = await resolveAuthUser(authUser)
-      const userId = supabaseUserId(user)
-      if (!userId) throw new Error('Tu dois être connectée pour enregistrer le profil.')
-
-      const row = {
-        id: userId,
-        username: usernameFromNames(payload.firstName, payload.lastName),
-      }
-
-      const { error } = await client.from('profile').upsert(row)
-      if (error) throw error
-      this.phone = payload.phone.trim()
-      this.postalAddress = payload.postalAddress.trim()
-      this.applyProfile(row, user?.email)
-    },
     async setAesthetic(id: AestheticId) {
-      const client = useSupabaseClient()
+      const client = useSupabaseClient<Database>()
       const user = await resolveAuthUser()
       const userId = supabaseUserId(user)
       if (!userId) throw new Error('Tu dois être connectée pour enregistrer ton aesthetic.')
 
       const { data, error } = await client
-        .from('profile')
+        .from('profiles')
         .update({ aesthetic_id: id })
         .eq('id', userId)
         .select('id')
@@ -161,7 +131,7 @@ export const useUserStore = defineStore('user', {
       if (!data) {
         await this.syncFromSupabase()
         const { error: retryError } = await client
-          .from('profile')
+          .from('profiles')
           .update({ aesthetic_id: id })
           .eq('id', userId)
         if (retryError) throw retryError
@@ -170,7 +140,7 @@ export const useUserStore = defineStore('user', {
       this.aestheticId = id
     },
     async logout() {
-      const client = useSupabaseClient()
+      const client = useSupabaseClient<Database>()
       const { error } = await client.auth.signOut()
       this.reset()
       if (error) throw error

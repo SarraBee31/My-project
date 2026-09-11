@@ -20,6 +20,7 @@
           :class="selectedId === option.id
             ? 'border-stone-900 bg-stone-100 ring-2 ring-stone-900 dark:border-stone-100 dark:bg-stone-900 dark:ring-stone-100'
             : 'border-stone-200 dark:border-stone-700'"
+          :disabled="pending"
           @click="selectedId = option.id; selectionError = null"
         >
           <span class="block text-base font-medium">{{ option.label }}</span>

@@ -17,13 +17,14 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+import type { Database } from '~/types/database.types'
 import { Button } from '@/components/ui/button'
 
 useSeoMeta({ title: 'Confirmation email' })
 
 const route = useRoute()
-const supabase = useSupabaseClient()
+const supabase = useSupabaseClient<Database>()
 const user = useSupabaseUser()
 const userStore = useUserStore()
 
